@@ -1,0 +1,96 @@
+---
+title: "Data Cleaning"
+author: "Leena Ambady"
+date: "4/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+dir.create("raw-data")
+library(readr)
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(readxl)
+library(tidycensus)
+library(stringr)
+census_api_key("41e31e7dc9f4be0cac86dd847ae1e2e19837090b")
+library(broom)
+library(forcats)
+```
+
+```{r Registration Data}
+# Loading in the data with the registration information for each county from 2008-2020
+
+registration <- read.csv("raw-data/Donate_Life_Organ_and_Tissue_Donor_Registry_Enrollment_by_County__Beginning_September_2008.csv") %>%
+  clean_names()
+
+registration <- registration %>%
+  filter(!county == "Out of State") %>%
+  filter(!county == "Unknown") %>%
+  filter(!county == "TOTAL NYS") %>%
+  select(-x2012_census_population, -location, 
+         -chart_month, -population_18_estimate, -registry_enrollments) %>%
+  mutate(county = recode(county, Cattauragus = "Cattaraugus")) %>%
+  filter(year == "2016" | year == "2015" | year == "2014") %>%
+  filter(month == "1")
+```
+
+```{r Demographic Data }
+# Getting ACS Data on White population, age, and income for the year 2015
+# This is what I can use for regular plots, but not for ggmap
+
+acs_2015_ng <- get_acs(geography = "county",
+                  variables =  c(Number_white = "B02001_002",
+                                 Median_income = "B19013_001", 
+                                 Median_age = "B01002_001"),
+                  year = 2015,
+                  state = "NY",
+                  geometry = FALSE,
+                  summary_var = "B02001_001")
+```
+
+```{r}
+# Cleaning Demographic Data
+
+acs_2015_ng$county <- word(acs_2015_ng$NAME, 1) 
+
+acs_2015_ng_clean <- acs_2015_ng %>%
+  mutate(county = recode(county, New = "New York", "St." = "St Lawrence")) %>%
+   pivot_wider(-moe, names_from = variable, values_from = estimate) %>%
+  select(-summary_moe, -NAME, -GEOID) %>%
+  mutate(Perc_white = (Number_white/summary_est) * 100)
+```
+
+```{r}
+# Joining registration and demographic data 
+
+  joined <- registration %>%
+  full_join(acs_2015_ng_clean, by = "county")
+
+saveRDS(joined, file = "final_proj/joined_data.RDS")
+
+```
+
+
+```{r}
+options(scipen = 999)
+
+ joined2 <- 
+  joined %>%
+  rename("APerc_white" = "Perc_white")
+
+model <- 
+  lm(x_eligible_population_enrolled ~ APerc_white + Median_income + Median_age, data = joined2) 
+
+model %>%
+  tidy(conf.int = TRUE) %>%
+  mutate("Coefficient" = round(estimate, 3),
+         "Upper Bound" = round(conf.high, 3),
+         "Lower Bound" = round(conf.low, 3)) %>%
+  select(term, Coefficient, 'Lower Bound', 'Upper Bound')
+  
+
+```
+
