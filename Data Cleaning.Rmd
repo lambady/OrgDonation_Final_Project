@@ -51,7 +51,7 @@ acs_2015_ng <- get_acs(geography = "county",
                   summary_var = "B02001_001")
 ```
 
-```{r}
+```{r Demographics Cleaning}
 # Cleaning Demographic Data
 
 acs_2015_ng$county <- word(acs_2015_ng$NAME, 1) 
@@ -63,7 +63,7 @@ acs_2015_ng_clean <- acs_2015_ng %>%
   mutate(Perc_white = (Number_white/summary_est) * 100)
 ```
 
-```{r}
+```{r Registration + Demographics + No Geometries}
 # Joining registration and demographic data 
 
   joined <- registration %>%
@@ -74,23 +74,54 @@ saveRDS(joined, file = "final_proj/joined_data.RDS")
 ```
 
 
-```{r}
-options(scipen = 999)
+```{r Demographics + Geometries}
+acs_2015_g <- get_acs(geography = "county",
+                  variables =  c(Number_white = "B02001_002",
+                                 Median_income = "B19013_001", 
+                                 Median_age = "B01002_001"),
+                  year = 2015,
+                  state = "NY",
+                  geometry = TRUE,
+                  summary_var = "B02001_001")
 
- joined2 <- 
-  joined %>%
-  rename("APerc_white" = "Perc_white")
 
-model <- 
-  lm(x_eligible_population_enrolled ~ APerc_white + Median_income + Median_age, data = joined2) 
+```
 
-model %>%
-  tidy(conf.int = TRUE) %>%
-  mutate("Coefficient" = round(estimate, 3),
-         "Upper Bound" = round(conf.high, 3),
-         "Lower Bound" = round(conf.low, 3)) %>%
-  select(term, Coefficient, 'Lower Bound', 'Upper Bound')
+```{r Demographics + Geometries Cleaned}
+library(plotly)
+
+acs_2015_g$county <- word(acs_2015_g$NAME, 1)
+
+acs_2015_g_clean <- acs_2015_g %>%
+mutate(county = recode(county, New = "New York", "St." = "St Lawrence"))
+
+saveRDS(acs_2015_g_clean, file = "final_proj/geometrydata.RDS")
+
+# don't know how to get the caption or get it to stop saying "estimate" 
+```
+
+```{r Registration + Demographics + Geometries}
+joined_geom <- registration %>%
+  full_join(acs_2015_g_clean, by = "county") %>%
+  select(-variable, -estimate, -moe, -summary_est, -summary_moe) %>%
+  unique()
+
+saveRDS(joined_geom, file = "final_proj/joined_geom.RDS")
   
+```
 
+
+```{r For Untidy Data joined with Demographics without Geometries}
+acs_2015_ng$county <- word(acs_2015_ng$NAME, 1) 
+
+acs_2015_ng_untidy <- acs_2015_ng %>%
+  mutate(county = recode(county, New = "New York", "St." = "St Lawrence")) %>%
+  select(-summary_moe, -NAME, -GEOID) %>%
+  mutate(Perc_white = (estimate/summary_est) * 100)
+
+joined_untidy <- registration %>%
+  full_join(acs_2015_ng_untidy, by = "county")
+
+saveRDS(joined_untidy, file = "final_proj/joined_untidy.RDS")
 ```
 
