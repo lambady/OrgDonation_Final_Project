@@ -5,6 +5,7 @@ library(tidyverse)
 library(broom)
 library(gganimate)
 library(plotly)
+library(sf)
 
 joined_data <- readRDS("joined_data.RDS")
 geometry_data <- readRDS("geometrydata.RDS")
