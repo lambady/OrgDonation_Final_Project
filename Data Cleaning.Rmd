@@ -125,3 +125,24 @@ joined_untidy <- registration %>%
 saveRDS(joined_untidy, file = "final_proj/joined_untidy.RDS")
 ```
 
+```{r}
+h <- joined_geom %>%
+            ggplot(aes(fill = x_eligible_population_enrolled,
+                       geometry = geometry, 
+                       text = paste(county, "County"))) +
+            geom_sf() +
+            labs(fill = "Percent Registered",
+                 title = "Percent of the Population Registered as an Organ Donor, 2015",
+                 subtitle = "Source: HealthData.gov, 2015") +
+            theme_classic() +
+            theme(axis.line = element_blank()) +
+            theme(axis.text = element_blank()) +
+            theme(axis.ticks = element_blank()) +
+            scale_fill_viridis_c(direction = -1) +
+            scale_color_viridis_c(direction = -1)
+        
+        ggplotly(h) %>%
+           style(hoverinfo = "text",
+                        hovertext = paste("Income", joined_geom$Median_income))
+```
+
