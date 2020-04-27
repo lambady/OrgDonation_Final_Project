@@ -1,0 +1,215 @@
+---
+title: "Data Cleaning"
+author: "Leena Ambady"
+date: "4/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Loading in all the necessary packages 
+
+knitr::opts_chunk$set(echo = TRUE)
+dir.create("raw-data")
+library(readr)
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(readxl)
+library(tidycensus)
+library(stringr)
+census_api_key("41e31e7dc9f4be0cac86dd847ae1e2e19837090b")
+library(broom)
+library(forcats)
+```
+
+```{r Registration Data}
+# Loading in the data with the registration information for each county from 2008-2020
+
+registration <- read.csv("raw-data/Donate_Life_Organ_and_Tissue_Donor_Registry_Enrollment_by_County__Beginning_September_2008.csv") %>%
+  clean_names()
+
+registration <- registration %>%
+  filter(!county == "Out of State") %>%
+  filter(!county == "Unknown") %>%
+  filter(!county == "TOTAL NYS") %>%
+  select(-x2012_census_population, -location, 
+         -chart_month, -population_18_estimate, -registry_enrollments) %>%
+  mutate(county = recode(county, Cattauragus = "Cattaraugus")) 
+  #filter(year == "2016" | year == "2015" | year == "2014") %>%
+  #filter(month == "1")
+```
+
+```{r Demographic Data }
+# Getting ACS Data on White population, age, and income for the year 2015
+# This is what I can use for regular plots, but not for ggmap
+# Had to do this once without geometries and once with geometries because when
+# it had them I couldn't pivot the data
+
+acs_2015_ng <- get_acs(geography = "county",
+                  variables =  c(Number_white = "B02001_002",
+                                 Median_income = "B19013_001", 
+                                 Median_age = "B01002_001"),
+                  year = 2015,
+                  state = "NY",
+                  geometry = FALSE,
+                  summary_var = "B02001_001")
+```
+
+```{r Demographics Cleaning}
+# Cleaning Demographic Data
+
+acs_2015_ng$county <- word(acs_2015_ng$NAME, 1) 
+
+# Making sure the county names match
+# Pivoting the data so that age, income, and percent white each are their own variable
+
+acs_2015_ng_clean <- acs_2015_ng %>%
+  mutate(county = recode(county, New = "New York", "St." = "St Lawrence")) %>%
+   pivot_wider(-moe, names_from = variable, values_from = estimate) %>%
+  select(-summary_moe, -NAME, -GEOID) %>%
+  mutate(Perc_white = (Number_white/summary_est) * 100)
+```
+
+```{r Registration + Demographics + No Geometries}
+# Joining registration and demographic data 
+
+  joined <- registration %>%
+  full_join(acs_2015_ng_clean, by = "county")
+
+# Save to download in my shiny app
+
+saveRDS(joined, file = "final_proj/joined_data.RDS")
+
+```
+
+
+```{r Demographics + Geometries}
+# Downlooding the ACS data with geometries so I can make maps 
+
+acs_2015_g <- get_acs(geography = "county",
+                  variables =  c(Number_white = "B02001_002",
+                                 Median_income = "B19013_001", 
+                                 Median_age = "B01002_001"),
+                  year = 2015,
+                  state = "NY",
+                  geometry = TRUE,
+                  summary_var = "B02001_001")
+
+
+```
+
+```{r Demographics + Geometries Cleaned}
+library(plotly)
+# Cleaning this geometry data the same way as above, saving it to download in my shiny app
+
+acs_2015_g$county <- word(acs_2015_g$NAME, 1)
+
+acs_2015_g_clean <- acs_2015_g %>%
+mutate(county = recode(county, New = "New York", "St." = "St Lawrence"))
+
+saveRDS(acs_2015_g_clean, file = "final_proj/geometrydata.RDS")
+
+
+```
+
+```{r Registration + Demographics + Geometries}
+# joining the geometry data with the registration rates 
+
+joined_geom <- registration %>%
+  full_join(acs_2015_g_clean, by = "county") %>%
+  select(-variable, -estimate, -moe, -summary_est, -summary_moe) %>%
+  unique()
+
+saveRDS(joined_geom, file = "final_proj/joined_geom.RDS")
+  
+```
+
+
+```{r For Untidy Data joined with Demographics without Geometries}
+# saving the untidy version without geometries too-- I didn't end up using this but just in case
+
+acs_2015_ng$county <- word(acs_2015_ng$NAME, 1) 
+
+acs_2015_ng_untidy <- acs_2015_ng %>%
+  mutate(county = recode(county, New = "New York", "St." = "St Lawrence")) %>%
+  select(-summary_moe, -NAME, -GEOID) %>%
+  mutate(Perc_white = (estimate/summary_est) * 100)
+
+joined_untidy <- registration %>%
+  full_join(acs_2015_ng_untidy, by = "county")
+
+saveRDS(joined_untidy, file = "final_proj/joined_untidy.RDS")
+```
+
+```{r}
+# Testing map a map in ggplotly
+h <- joined_geom %>%
+            ggplot(aes(fill = x_eligible_population_enrolled,
+                       geometry = geometry, 
+                       text = paste(county, "County"))) +
+            geom_sf() +
+            labs(fill = "Percent Registered",
+                 title = "Percent of the Population Registered as an Organ Donor, 2015",
+                 subtitle = "Source: HealthData.gov, 2015") +
+            theme_classic() +
+            theme(axis.line = element_blank()) +
+            theme(axis.text = element_blank()) +
+            theme(axis.ticks = element_blank()) +
+            scale_fill_viridis_c(direction = -1) +
+            scale_color_viridis_c(direction = -1)
+        
+        ggplotly(h) %>%
+           style(hoverinfo = "text",
+                        hovertext = paste("Income", joined_geom$Median_income))
+```
+
+```{r}
+# Some more testing for looking at change over time 
+
+plot <- registration %>%
+  filter(month == "11") %>%
+  filter(year %in% c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016")) %>%
+  ggplot(aes(x = as.integer(year), y = x_eligible_population_enrolled)) + geom_line(aes(color = county)) +
+  theme(legend.position = "none")
+
+ggplotly(plot)
+```
+
+```{r}
+# Some more testing for looking at change over time 
+play <- 
+  registration %>%
+  filter(month == "11") %>%
+  filter(year == "2008" | year == "2016")
+
+play2 <- play %>%
+  pivot_wider(names_from = year, values_from = x_eligible_population_enrolled) 
+
+play3 <- play2 %>%
+  mutate(diff = `2016` - `2008`) %>%
+  arrange(desc(diff))
+
+play4 <- play3 %>%
+  full_join(acs_2015_ng_clean, by = "county")
+
+j <- play4 %>%
+  ggplot(aes(x = fct_reorder(county, diff), y = diff, fill = Perc_white)) + geom_col() +
+   scale_fill_viridis_c(direction = -1) +
+            scale_color_viridis_c(direction = -1)
+  
+
+ggplotly(j)
+
+
+```
+
+```{r}
+all_years_registration <- registration %>%
+  filter(month == "11") %>%
+  filter(year %in% c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016"))
+
+all_years_registration %>%
+  full_join(acs_2015_g_clean, by = "county")
+
+```
+

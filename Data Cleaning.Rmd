@@ -34,9 +34,8 @@ registration <- registration %>%
   filter(!county == "TOTAL NYS") %>%
   select(-x2012_census_population, -location, 
          -chart_month, -population_18_estimate, -registry_enrollments) %>%
-  mutate(county = recode(county, Cattauragus = "Cattaraugus")) 
-  #filter(year == "2016" | year == "2015" | year == "2014") %>%
-  #filter(month == "1")
+  mutate(county = recode(county, Cattauragus = "Cattaraugus")) %>%
+ filter(year %in% c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016"))
 ```
 
 ```{r Demographic Data }
@@ -74,11 +73,11 @@ acs_2015_ng_clean <- acs_2015_ng %>%
 # Joining registration and demographic data 
 
   joined <- registration %>%
-  full_join(acs_2015_ng_clean, by = "county")
+  full_join(acs_2015_ng_clean, by = "county") 
 
 # Save to download in my shiny app
 
-saveRDS(joined, file = "final_proj/joined_data.RDS")
+saveRDS(joined, file = "organ_donation_shiny/joined_data.RDS")
 
 ```
 
@@ -107,7 +106,7 @@ acs_2015_g$county <- word(acs_2015_g$NAME, 1)
 acs_2015_g_clean <- acs_2015_g %>%
 mutate(county = recode(county, New = "New York", "St." = "St Lawrence"))
 
-saveRDS(acs_2015_g_clean, file = "final_proj/geometrydata.RDS")
+saveRDS(acs_2015_g_clean, file = "organ_donation_shiny/geometrydata.RDS")
 
 
 ```
@@ -120,7 +119,7 @@ joined_geom <- registration %>%
   select(-variable, -estimate, -moe, -summary_est, -summary_moe) %>%
   unique()
 
-saveRDS(joined_geom, file = "final_proj/joined_geom.RDS")
+saveRDS(joined_geom, file = "organ_donation_shiny/joined_geom.RDS")
   
 ```
 
@@ -138,7 +137,7 @@ acs_2015_ng_untidy <- acs_2015_ng %>%
 joined_untidy <- registration %>%
   full_join(acs_2015_ng_untidy, by = "county")
 
-saveRDS(joined_untidy, file = "final_proj/joined_untidy.RDS")
+saveRDS(joined_untidy, file = "organ_donation_shiny/joined_untidy.RDS")
 ```
 
 ```{r}
@@ -168,7 +167,7 @@ h <- joined_geom %>%
 
 plot <- registration %>%
   filter(month == "11") %>%
-  filter(year %in% c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016")) %>%
+  # filter(year %in% c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016")) %>%
   ggplot(aes(x = as.integer(year), y = x_eligible_population_enrolled)) + geom_line(aes(color = county)) +
   theme(legend.position = "none")
 
@@ -192,14 +191,59 @@ play3 <- play2 %>%
 play4 <- play3 %>%
   full_join(acs_2015_ng_clean, by = "county")
 
+saveRDS(play4, file = "organ_donation_shiny/growth_rates.RDS")
+
 j <- play4 %>%
-  ggplot(aes(x = fct_reorder(county, diff), y = diff, fill = Perc_white)) + geom_col() +
+  ggplot(aes(x = fct_reorder(county, diff), 
+             y = diff, 
+             fill = Median_age,
+             text = paste(county, "County, $", Median_income))) + 
+           geom_col() +
    scale_fill_viridis_c(direction = -1) +
             scale_color_viridis_c(direction = -1)
-  
 
-ggplotly(j)
+ggplotly(j, tooltip = "text")
 
 
+```
+
+```{r}
+
+# Animation for % registered over time 
+
+all_years_registration <- registration %>%
+  filter(month == "11") %>%
+  filter(year %in% c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016"))
+
+
+time_elapse <- all_years_registration %>%
+  full_join(acs_2015_g_clean, by = "county") 
+
+library(transformr)
+
+time_elapse %>%
+            ggplot(aes(fill = x_eligible_population_enrolled,
+                       geometry = geometry)) + 
+  geom_sf() + 
+  transition_time(year) +
+  scale_fill_viridis_c(direction = -1) +
+            scale_color_viridis_c(direction = -1)
+
+```
+
+```{r}
+# Growth in each county vs. demographics in 2015
+play5 <- play4 %>%
+  filter(!diff == "0")
+
+  growth_regression <-
+            lm(diff ~ Perc_white * Median_income * Median_age, data = play5)
+
+        growth_regression %>%
+            tidy(conf.int = TRUE) %>%
+            mutate("Coefficient" = round(estimate, 3),
+                   "Upper Bound" = round(conf.high, 3),
+                   "Lower Bound" = round(conf.low, 3)) %>%
+            select(term, Coefficient, 'Lower Bound', 'Upper Bound')
 ```
 

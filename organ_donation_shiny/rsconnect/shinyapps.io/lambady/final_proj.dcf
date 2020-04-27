@@ -1,0 +1,12 @@
+name: final_proj
+title: final_proj
+username:
+account: lambady
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2186990
+bundleId: 3065550
+url: https://lambady.shinyapps.io/final_proj/
+when: 1587870895.69562
+asMultiple: FALSE
+asStatic: FALSE
