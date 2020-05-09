@@ -162,17 +162,6 @@ h <- joined_geom %>%
                         hovertext = paste("Income", joined_geom$Median_income))
 ```
 
-```{r}
-# Some more testing for looking at change over time 
-
-plot <- registration %>%
-  filter(month == "11") %>%
-  # filter(year %in% c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016")) %>%
-  ggplot(aes(x = as.integer(year), y = x_eligible_population_enrolled)) + geom_line(aes(color = county)) +
-  theme(legend.position = "none")
-
-ggplotly(plot)
-```
 
 ```{r}
 # Some more testing for looking at change over time 
@@ -207,43 +196,18 @@ ggplotly(j, tooltip = "text")
 
 ```
 
-```{r}
 
-# Animation for % registered over time 
-
-all_years_registration <- registration %>%
-  filter(month == "11") %>%
-  filter(year %in% c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016"))
-
-
-time_elapse <- all_years_registration %>%
-  full_join(acs_2015_g_clean, by = "county") 
-
-library(transformr)
-
-time_elapse %>%
-            ggplot(aes(fill = x_eligible_population_enrolled,
-                       geometry = geometry)) + 
-  geom_sf() + 
-  transition_time(year) +
-  scale_fill_viridis_c(direction = -1) +
-            scale_color_viridis_c(direction = -1)
-
-```
 
 ```{r}
-# Growth in each county vs. demographics in 2015
-play5 <- play4 %>%
-  filter(!diff == "0")
+ # correlation coefficients for age, race, and income with % Registered
+ 
+library(gt)
 
-  growth_regression <-
-            lm(diff ~ Perc_white * Median_income * Median_age, data = play5)
-
-        growth_regression %>%
-            tidy(conf.int = TRUE) %>%
-            mutate("Coefficient" = round(estimate, 3),
-                   "Upper Bound" = round(conf.high, 3),
-                   "Lower Bound" = round(conf.low, 3)) %>%
-            select(term, Coefficient, 'Lower Bound', 'Upper Bound')
+joined %>%
+  summarize('Median Age in County' = cor(Median_age, x_eligible_population_enrolled),
+            'Median Income in County' = cor(Median_income, x_eligible_population_enrolled),
+            'Percent of the County that is White' = cor(Perc_white, x_eligible_population_enrolled)) %>%
+  gt() %>%
+  tab_header("What is the correlation between county demographic factors and organ donor registration rates?")
 ```
 

@@ -7,6 +7,7 @@ library(gganimate)
 library(plotly)
 library(sf)
 library(shinythemes)
+library(gt)
 
 # All my cleaned datasets loaded in 
 
@@ -80,6 +81,7 @@ ui <-
     # I want to change this plot later, but for now it is fine
     
                     mainPanel(plotlyOutput("Image"),
+                              plotlyOutput("growth_plot"),
                               plotlyOutput("growth_graph")))))
              )),
     
@@ -111,7 +113,12 @@ ui <-
                        registered as the outcome, and age, income, and % of the population that is white as explanatory variables. The values indicate
                        that for every one unit increase in age and race, there is about a 2% increase in registration. However, note
                        that the confidence interval around age is quite wide."),
-                    tableOutput("regression_table"))))),
+                    gt_output("regression_table"),
+                    br(),
+                    h4("Correlation Information"),
+                    h5("What is the correlation between county demographic factors and organ donor registration rates?"),
+                    br(),
+                    gt_output("correlation_table"))))),
     
     # This tab was more straightfoward, just text 
     
@@ -203,7 +210,7 @@ server <- function(input, output) {
     
 # Displaying the coefficient and confidence interval for my multiple regression 
     
-    output$regression_table <- renderTable({
+    output$regression_table <- render_gt({
         options(scipen = 999)
 
         joined2 <-
@@ -217,9 +224,23 @@ server <- function(input, output) {
             tidy(conf.int = TRUE) %>%
             mutate("Coefficient" = round(estimate, 3),
                    "Upper Bound" = round(conf.high, 3),
-                   "Lower Bound" = round(conf.low, 3)) %>%
-            select(term, Coefficient, 'Lower Bound', 'Upper Bound')
+                   "Lower Bound" = round(conf.low, 3),
+                   "Variable" = term) %>%
+            select(Variable, Coefficient, 'Lower Bound', 'Upper Bound') %>%
+          gt() %>%
+          tab_header("Multiple Regression Coefficients and Confidence Intervals")
         })
+    
+  # Displaying the correlation coefficients with % Registered, used a gt table 
+    
+    output$correlation_table <- render_gt({
+      joined_data %>%
+        summarize('Median Age in County' = cor(Median_age, x_eligible_population_enrolled),
+                  'Median Income in County' = cor(Median_income, x_eligible_population_enrolled),
+                  'Percent of the County that is White' = cor(Perc_white, x_eligible_population_enrolled)) %>%
+        gt() %>%
+        tab_header("Correlation Coefficients")
+    })
     
     # Map of demographic factors 
     output$Map <- renderPlotly ({
@@ -359,7 +380,7 @@ server <- function(input, output) {
             # So the higher numbers are darker 
             labs(y = "% Growth in Organ Donor Registration", 
                  x = "County",
-                 title = "% Growth New York Organ Donation Registration Rates by County, 2008-2016",
+                 title = "% Growth in Organ Donor Registration Rates by County in NY, 2008-2016",
                  
                  # Also have to use case_when so the label of the legend changes based on the
                  # dropdown option
@@ -377,6 +398,21 @@ server <- function(input, output) {
         # over the graph
         
         ggplotly(w, tooltip = "text")
+    })
+    
+    output$growth_plot <- renderPlotly({
+      change <- joined_data %>%
+        filter(month == "11") %>%
+        ggplot(aes(x = as.integer(year), 
+                   y = x_eligible_population_enrolled,
+                   text = paste(county, "County:", x_eligible_population_enrolled, "years old"))) + 
+        geom_line(aes(color = county)) +
+        theme(legend.position = "none") +
+        labs(title = "Growth in Organ Donor Registration Rates, 2008-2016",
+             x = "Year",
+             y = "% of the Population Registered as an Organ Donor")
+      
+      ggplotly(change, tooltip = "text")
     })
 }
 
