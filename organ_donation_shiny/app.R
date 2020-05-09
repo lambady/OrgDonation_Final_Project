@@ -81,7 +81,6 @@ ui <-
     # I want to change this plot later, but for now it is fine
     
                     mainPanel(plotlyOutput("Image"),
-                              plotlyOutput("growth_plot"),
                               plotlyOutput("growth_graph")))))
              )),
     
@@ -399,21 +398,7 @@ server <- function(input, output) {
         
         ggplotly(w, tooltip = "text")
     })
-    
-    output$growth_plot <- renderPlotly({
-      change <- joined_data %>%
-        filter(month == "11") %>%
-        ggplot(aes(x = as.integer(year), 
-                   y = x_eligible_population_enrolled,
-                   text = paste(county, "County:", x_eligible_population_enrolled, "years old"))) + 
-        geom_line(aes(color = county)) +
-        theme(legend.position = "none") +
-        labs(title = "Growth in Organ Donor Registration Rates, 2008-2016",
-             x = "Year",
-             y = "% of the Population Registered as an Organ Donor")
-      
-      ggplotly(change, tooltip = "text")
-    })
+
 }
 
 # Run the application 
